@@ -152,30 +152,42 @@ public class AuthUserServiceImpl implements AuthUserService {
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid credentials"));
         }
 
-        // Password is correct, now check MFA
-        if (credential.getMfaEnabled()) {
-            // If no MFA code provided, return that MFA is required
-            if (request.getMfaCode() == null) {
-                logger.debug("MFA required for user: {}", user.getUserCode());
-                return ResponseEntity.ok(Map.of(
-                    "requireMfa", true,
-                    "message", "MFA verification required"
-                ));
-            }
-            
-            // If MFA code provided, verify it
-            if (!verifyMfaCode(credential.getMfaSecret(), request.getMfaCode())) {
-                logger.debug("Invalid MFA code for user: {}", user.getUserCode());
-                return ResponseEntity.badRequest().body(Map.of("error", "Invalid MFA code"));
-            }
-            
-            logger.debug("MFA verification successful for user: {}", user.getUserCode());
+        // Password is correct, now ENFORCE MFA registration
+        if (!credential.getMfaEnabled()) {
+            // MFA is not enabled - user MUST set up MFA before proceeding
+            logger.debug("MFA not enabled for user: {} - requiring MFA setup", user.getUserCode());
+            return ResponseEntity.ok(Map.of(
+                "requireMfaSetup", true,
+                "message", "MFA setup is required before you can login",
+                "username", request.getUsername()
+            ));
         }
 
-        // Only generate token if both password and MFA (if enabled) are verified
+        // MFA is enabled - require MFA code
+        if (request.getMfaCode() == null) {
+            logger.debug("MFA code required for user: {}", user.getUserCode());
+            return ResponseEntity.ok(Map.of(
+                "requireMfa", true,
+                "message", "MFA verification required",
+                "username", request.getUsername()
+            ));
+        }
+        
+        // Verify MFA code
+        if (!verifyMfaCode(credential.getMfaSecret(), request.getMfaCode())) {
+            logger.debug("Invalid MFA code for user: {}", user.getUserCode());
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid MFA code"));
+        }
+        
+        logger.debug("MFA verification successful for user: {}", user.getUserCode());
+
+        // Only generate token if both password and MFA are verified
         String token = jwtService.generateToken(user);
         logger.debug("Successfully authenticated user: {}", user.getUserCode());
-        return ResponseEntity.ok(Map.of("token", token));
+        return ResponseEntity.ok(Map.of(
+            "token", token,
+            "message", "Login successful"
+        ));
     }
 
     @Override
@@ -290,10 +302,18 @@ public class AuthUserServiceImpl implements AuthUserService {
 
         // Enable MFA and save recovery codes
         credential.setMfaEnabled(true);
-        credential.setRecoveryCodes(String.join(",", generateRecoveryCodes()));
+        List<String> recoveryCodes = generateRecoveryCodes();
+        credential.setRecoveryCodes(String.join(",", recoveryCodes));
         credentialRepository.save(credential);
 
-        return ResponseEntity.ok(Map.of("message", "MFA enabled successfully"));
+        // Generate JWT token for immediate login after MFA setup
+        String token = jwtService.generateToken(user);
+        
+        return ResponseEntity.ok(Map.of(
+            "message", "MFA enabled successfully",
+            "token", token,
+            "recoveryCodes", recoveryCodes
+        ));
     }
     
     @Override
