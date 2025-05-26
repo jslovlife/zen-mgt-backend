@@ -2,6 +2,13 @@ server:
   port: 8080
   servlet:
     context-path: /api
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 25
+    max-connections: 8192
+    accept-count: 100
+    connection-timeout: 20000
 
 spring:
   application:
@@ -11,6 +18,14 @@ spring:
     username: zenadmin
     password: zenadmin123
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      pool-name: ZenMgt-HikariCP
   jpa:
     hibernate:
       ddl-auto: none
@@ -19,11 +34,23 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+        batch_versioned_data: true
   data:
     redis:
       host: localhost
       port: 6379
       password: 
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
   h2:
     console:
       enabled: true
@@ -40,6 +67,18 @@ spring:
               - email
               - profile
             redirect-uri: http://localhost:8080/login/oauth2/code/google
+  task:
+    execution:
+      pool:
+        core-size: 10
+        max-size: 50
+        queue-capacity: 100
+        keep-alive: 60s
+      thread-name-prefix: ZenMgt-Task-
+    scheduling:
+      pool:
+        size: 5
+      thread-name-prefix: ZenMgt-Scheduler-
 
 logging:
   level:

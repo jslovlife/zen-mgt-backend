@@ -11,11 +11,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
-import org.springframework.security.web.authentication.Http403ForbiddenEntryPoint;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.cors.CorsConfiguration;
@@ -33,7 +30,6 @@ import lombok.RequiredArgsConstructor;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 @Configuration
 @EnableWebSecurity
@@ -115,13 +111,6 @@ public class SecurityConfig {
                 request.getRequestURI()
             ));
         };
-    }
-
-    private RequestMatcher[] getPublicRequestMatchers() {
-        return Stream.of(SWAGGER_WHITELIST, PUBLIC_ENDPOINTS, MFA_PUBLIC_ENDPOINTS)
-            .flatMap(Arrays::stream)
-            .map(pattern -> new AntPathRequestMatcher(pattern))
-            .toArray(RequestMatcher[]::new);
     }
 
     @Bean

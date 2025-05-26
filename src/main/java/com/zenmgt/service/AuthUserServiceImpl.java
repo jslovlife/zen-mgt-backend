@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.core.task.TaskExecutor;
 
 import com.zenmgt.dto.AuthUserDTO;
 import com.zenmgt.dto.LoginRequestDTO;
@@ -19,12 +22,13 @@ import com.zenmgt.dto.MfaVerificationDTO;
 import com.zenmgt.dto.MfaSetupDTO;
 import com.zenmgt.entity.AuthUser;
 import com.zenmgt.entity.AuthUserCredential;
-import com.zenmgt.mapper.AuthUserMapper;
+import com.zenmgt.entity.mapper.AuthUserMapper;
 import com.zenmgt.repository.AuthUserRepository;
 import com.zenmgt.repository.AuthUserRepositoryCustom;
 import com.zenmgt.repository.AuthUserCredentialRepository;
 import com.zenmgt.repository.VersionControlRepository.VersionControlResult;
 import com.zenmgt.util.SnowflakeIdGenerator;
+import com.zenmgt.util.TraceIdUtil;
 import com.zenmgt.enums.RecordStatus;
 import dev.samstevens.totp.code.*;
 import dev.samstevens.totp.secret.SecretGenerator;
@@ -47,6 +51,14 @@ public class AuthUserServiceImpl implements AuthUserService {
     @Autowired private final JwtService jwtService;
     @Autowired private final SecretGenerator secretGenerator;
     @Autowired private final CodeVerifier codeVerifier;
+    
+    @Autowired
+    @Qualifier("mfaTaskExecutor")
+    private TaskExecutor mfaTaskExecutor;
+    
+    @Autowired
+    @Qualifier("securityTaskExecutor")
+    private TaskExecutor securityTaskExecutor;
 
     @Override
     public List<AuthUserDTO> getAllUsers() {
@@ -127,35 +139,39 @@ public class AuthUserServiceImpl implements AuthUserService {
     @Override
     @Transactional
     public ResponseEntity<?> authenticateUser(LoginRequestDTO request) {
-        logger.debug("Attempting to authenticate user: {}", request.getUsername());
+        String traceId = TraceIdUtil.getTraceId();
+        logger.debug("Attempting to authenticate user: {} [TraceId: {}]", request.getUsername(), traceId);
         
         Optional<AuthUser> userOpt = authUserRepository.findByUsername(request.getUsername());
         if (userOpt.isEmpty()) {
-            logger.debug("User not found: {}", request.getUsername());
+            logger.debug("User not found: {} [TraceId: {}]", request.getUsername(), traceId);
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid credentials"));
         }
 
         AuthUser user = userOpt.get();
-        logger.debug("Found user: {} with ID: {}", user.getUserCode(), user.getId());
+        // Set user ID in MDC for subsequent logging
+        TraceIdUtil.setUserId(user.getUserCode());
+        logger.debug("Found user: {} with ID: {} [TraceId: {}]", user.getUserCode(), user.getId(), traceId);
         
         Optional<AuthUserCredential> credentialOpt = credentialRepository.findByParentId(user.getId());
         if (credentialOpt.isEmpty()) {
-            logger.debug("No credentials found for user ID: {}", user.getId());
+            logger.debug("No credentials found for user ID: {} [TraceId: {}]", user.getId(), traceId);
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid credentials"));
         }
 
         AuthUserCredential credential = credentialOpt.get();
         boolean passwordMatches = passwordEncoder.matches(request.getPassword(), credential.getHashPassword());
-        logger.debug("Password match result for user {}: {}", user.getUserCode(), passwordMatches);
+        logger.debug("Password match result for user {}: {} [TraceId: {}]", user.getUserCode(), passwordMatches, traceId);
         
         if (!passwordMatches) {
+            logger.warn("Authentication failed - invalid password for user: {} [TraceId: {}]", user.getUserCode(), traceId);
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid credentials"));
         }
 
         // Password is correct, now ENFORCE MFA registration
         if (!credential.getMfaEnabled()) {
             // MFA is not enabled - user MUST set up MFA before proceeding
-            logger.debug("MFA not enabled for user: {} - requiring MFA setup", user.getUserCode());
+            logger.debug("MFA not enabled for user: {} - requiring MFA setup [TraceId: {}]", user.getUserCode(), traceId);
             return ResponseEntity.ok(Map.of(
                 "requireMfaSetup", true,
                 "message", "MFA setup is required before you can login",
@@ -165,7 +181,7 @@ public class AuthUserServiceImpl implements AuthUserService {
 
         // MFA is enabled - require MFA code
         if (request.getMfaCode() == null) {
-            logger.debug("MFA code required for user: {}", user.getUserCode());
+            logger.debug("MFA code required for user: {} [TraceId: {}]", user.getUserCode(), traceId);
             return ResponseEntity.ok(Map.of(
                 "requireMfa", true,
                 "message", "MFA verification required",
@@ -175,15 +191,15 @@ public class AuthUserServiceImpl implements AuthUserService {
         
         // Verify MFA code
         if (!verifyMfaCode(credential.getMfaSecret(), request.getMfaCode())) {
-            logger.debug("Invalid MFA code for user: {}", user.getUserCode());
+            logger.warn("Authentication failed - invalid MFA code for user: {} [TraceId: {}]", user.getUserCode(), traceId);
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid MFA code"));
         }
         
-        logger.debug("MFA verification successful for user: {}", user.getUserCode());
+        logger.debug("MFA verification successful for user: {} [TraceId: {}]", user.getUserCode(), traceId);
 
         // Only generate token if both password and MFA are verified
         String token = jwtService.generateToken(user);
-        logger.debug("Successfully authenticated user: {}", user.getUserCode());
+        logger.info("Successfully authenticated user: {} [TraceId: {}]", user.getUserCode(), traceId);
         return ResponseEntity.ok(Map.of(
             "token", token,
             "message", "Login successful"
@@ -418,5 +434,72 @@ public class AuthUserServiceImpl implements AuthUserService {
             codes.add(Base64.getEncoder().encodeToString(bytes).substring(0, 8));
         }
         return codes;
+    }
+
+    /**
+     * Async method for MFA code verification to improve performance
+     */
+    @Async("mfaTaskExecutor")
+    public CompletableFuture<Boolean> verifyMfaCodeAsync(String secret, String code) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                logger.debug("Async MFA verification started for thread: {}", Thread.currentThread().getName());
+                boolean result = codeVerifier.isValidCode(secret, code);
+                logger.debug("Async MFA verification completed for thread: {}", Thread.currentThread().getName());
+                return result;
+            } catch (Exception e) {
+                logger.error("Error in async MFA verification: {}", e.getMessage());
+                return false;
+            }
+        }, mfaTaskExecutor);
+    }
+
+    /**
+     * Async method for generating recovery codes
+     */
+    @Async("mfaTaskExecutor")
+    public CompletableFuture<List<String>> generateRecoveryCodesAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            logger.debug("Async recovery codes generation started for thread: {}", Thread.currentThread().getName());
+            List<String> codes = generateRecoveryCodes();
+            logger.debug("Async recovery codes generation completed for thread: {}", Thread.currentThread().getName());
+            return codes;
+        }, mfaTaskExecutor);
+    }
+
+    /**
+     * Async method for JWT token generation
+     */
+    @Async("securityTaskExecutor")
+    public CompletableFuture<String> generateTokenAsync(AuthUser user) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                logger.debug("Async JWT generation started for user: {} on thread: {}", 
+                    user.getUserCode(), Thread.currentThread().getName());
+                String token = jwtService.generateToken(user);
+                logger.debug("Async JWT generation completed for user: {} on thread: {}", 
+                    user.getUserCode(), Thread.currentThread().getName());
+                return token;
+            } catch (Exception e) {
+                logger.error("Error in async JWT generation for user {}: {}", user.getUserCode(), e.getMessage());
+                throw new RuntimeException("Failed to generate JWT token", e);
+            }
+        }, securityTaskExecutor);
+    }
+
+    /**
+     * Thread-safe method to log authentication attempts
+     */
+    @Async("securityTaskExecutor")
+    public CompletableFuture<Void> logAuthenticationAttemptAsync(String username, boolean success, String clientInfo) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                logger.info("Authentication attempt - User: {}, Success: {}, Client: {}, Thread: {}", 
+                    username, success, clientInfo, Thread.currentThread().getName());
+                // Here you could add database logging or audit trail
+            } catch (Exception e) {
+                logger.error("Error logging authentication attempt: {}", e.getMessage());
+            }
+        }, securityTaskExecutor);
     }
 }

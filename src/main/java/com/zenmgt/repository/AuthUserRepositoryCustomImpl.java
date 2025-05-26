@@ -3,7 +3,6 @@ package com.zenmgt.repository;
 import com.zenmgt.dto.AuthUserDTO;
 import com.zenmgt.entity.AuthUser;
 import com.zenmgt.entity.AuthUserDetail;
-import com.zenmgt.mapper.AuthUserMapper;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Repository;
 
@@ -13,11 +12,8 @@ public class AuthUserRepositoryCustomImpl
     extends AbstractVersionControlRepository<AuthUser, AuthUserDetail, AuthUserDTO>
     implements AuthUserRepositoryCustom {
 
-    private final AuthUserMapper authUserMapper;
-
-    public AuthUserRepositoryCustomImpl(AuthUserMapper authUserMapper) {
+    public AuthUserRepositoryCustomImpl() {
         super(AuthUser.class, AuthUserDetail.class);
-        this.authUserMapper = authUserMapper;
     }
 
     @Override
