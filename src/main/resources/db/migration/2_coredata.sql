@@ -2,9 +2,9 @@
 INSERT INTO auth_user (id, user_code, is_active, active_version, created_by, updated_by)
 VALUES (1, 'superadmin', 1, 0, 1, 1);
 
--- Insert superadmin user details
-INSERT INTO auth_user_detail (id, auth_user_id, username, first_name, last_name, email, created_by, updated_by)
-VALUES (1, 1, 'superadmin', 'Super', 'Admin', 'superadmin@zenmgt.com', 1, 1);
+-- Insert superadmin user details with custom session validity (1 hour = 3600000 ms)
+INSERT INTO auth_user_detail (id, auth_user_id, username, first_name, last_name, email, session_validity, created_by, updated_by)
+VALUES (1, 1, 'superadmin', 'Super', 'Admin', 'superadmin@zenmgt.com', 3600000, 1, 1);
 
 -- Insert superadmin credentials (password: Admin@123)
 INSERT INTO auth_user_credential (id, auth_user_id, hash_password, mfa_enabled, recovery_codes, created_by, updated_by)

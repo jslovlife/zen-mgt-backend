@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/mgt/v1/users")
@@ -74,5 +75,37 @@ public class AuthUserController {
     @GetMapping("/list")
     public ResponseEntity<List<AuthUserDTO>> getUserList() {
         return ResponseEntity.ok(authUserService.getAllUsers());
+    }
+
+    /**
+     * Update session validity for a specific user
+     * @param id User ID
+     * @param sessionValidityMs Session validity in milliseconds
+     * @return Success/error response
+     */
+    @PutMapping("/{id}/session-validity")
+    @Transactional
+    public ResponseEntity<?> updateSessionValidity(
+            @PathVariable Long id, 
+            @RequestBody Map<String, Long> request) {
+        try {
+            Long sessionValidityMs = request.get("sessionValidityMs");
+            if (sessionValidityMs == null || sessionValidityMs <= 0) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Invalid session validity value"));
+            }
+            
+            boolean updated = authUserService.updateSessionValidity(id, sessionValidityMs);
+            if (updated) {
+                return ResponseEntity.ok(Map.of(
+                    "message", "Session validity updated successfully",
+                    "sessionValidityMs", sessionValidityMs,
+                    "sessionValidityHours", sessionValidityMs / (60 * 60 * 1000.0)
+                ));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Error updating session validity: " + e.getMessage()));
+        }
     }
 } 

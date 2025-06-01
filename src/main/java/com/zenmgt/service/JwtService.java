@@ -18,6 +18,15 @@ public interface JwtService {
     String generateToken(AuthUser user);
 
     /**
+     * Generates a JWT token for a user with custom expiration duration.
+     *
+     * @param user The user for whom to generate the token
+     * @param customExpirationMs Custom expiration duration in milliseconds
+     * @return The generated JWT token
+     */
+    String generateTokenWithCustomExpiration(AuthUser user, long customExpirationMs);
+
+    /**
      * Extracts the username from a JWT token.
      *
      * @param token The JWT token

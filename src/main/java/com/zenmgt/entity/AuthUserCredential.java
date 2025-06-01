@@ -23,6 +23,7 @@ public class AuthUserCredential extends BaseVersionDetail {
     private String mfaSecret;
 
     @Column(name = "mfa_enabled", nullable = false)
+    @Builder.Default
     private Boolean mfaEnabled = false;
 
     @Column(name = "recovery_codes", length = 1000)

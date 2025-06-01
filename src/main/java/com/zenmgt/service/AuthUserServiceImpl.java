@@ -22,10 +22,12 @@ import com.zenmgt.dto.MfaVerificationDTO;
 import com.zenmgt.dto.MfaSetupDTO;
 import com.zenmgt.entity.AuthUser;
 import com.zenmgt.entity.AuthUserCredential;
+import com.zenmgt.entity.AuthUserDetail;
 import com.zenmgt.entity.mapper.AuthUserMapper;
 import com.zenmgt.repository.AuthUserRepository;
 import com.zenmgt.repository.AuthUserRepositoryCustom;
 import com.zenmgt.repository.AuthUserCredentialRepository;
+import com.zenmgt.repository.AuthUserDetailRepository;
 import com.zenmgt.repository.VersionControlRepository.VersionControlResult;
 import com.zenmgt.util.SnowflakeIdGenerator;
 import com.zenmgt.util.TraceIdUtil;
@@ -45,6 +47,7 @@ public class AuthUserServiceImpl implements AuthUserService {
     @Autowired private final AuthUserRepository authUserRepository;
     @Autowired private final AuthUserRepositoryCustom authUserRepositoryCustom;
     @Autowired private final AuthUserCredentialRepository credentialRepository;
+    @Autowired private final AuthUserDetailRepository authUserDetailRepository;
     @Autowired private final SnowflakeIdGenerator snowflakeIdGenerator;
     @Autowired private final AuthUserMapper authUserMapper;
     @Autowired private final PasswordEncoder passwordEncoder;
@@ -501,5 +504,37 @@ public class AuthUserServiceImpl implements AuthUserService {
                 logger.error("Error logging authentication attempt: {}", e.getMessage());
             }
         }, securityTaskExecutor);
+    }
+
+    @Override
+    @Transactional
+    public boolean updateSessionValidity(Long userId, Long sessionValidityMs) {
+        try {
+            Optional<AuthUser> userOpt = authUserRepository.findById(userId);
+            if (userOpt.isEmpty()) {
+                logger.warn("User not found with ID: {}", userId);
+                return false;
+            }
+
+            AuthUser user = userOpt.get();
+            Optional<AuthUserDetail> userDetailOpt = authUserDetailRepository.findByParentId(user.getId());
+            
+            if (userDetailOpt.isEmpty()) {
+                logger.warn("User detail not found for user ID: {}", userId);
+                return false;
+            }
+
+            AuthUserDetail userDetail = userDetailOpt.get();
+            userDetail.setSessionValidity(sessionValidityMs);
+            authUserDetailRepository.save(userDetail);
+
+            logger.info("Session validity updated for user {} to {} ms ({} hours)", 
+                user.getUserCode(), sessionValidityMs, sessionValidityMs / (60 * 60 * 1000.0));
+            
+            return true;
+        } catch (Exception e) {
+            logger.error("Error updating session validity for user ID {}: {}", userId, e.getMessage());
+            return false;
+        }
     }
 }

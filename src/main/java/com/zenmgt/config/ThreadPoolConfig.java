@@ -1,6 +1,5 @@
 package com.zenmgt.config;
 
-import com.zenmgt.util.TraceIdUtil;
 import org.slf4j.MDC;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

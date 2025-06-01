@@ -29,6 +29,7 @@ public class AuthUserDTO {
     private String address;
     private String profilePictureUrl;
     private String status;
+    private Long sessionValidity; // Session validity in milliseconds
     
     // Audit fields
     private LocalDateTime createdAt;

@@ -34,6 +34,7 @@ public interface AuthUserMapper {
     @Mapping(target = "gender", source = "detail.gender")
     @Mapping(target = "address", source = "detail.address")
     @Mapping(target = "profilePictureUrl", source = "detail.profilePictureUrl")
+    @Mapping(target = "sessionValidity", source = "detail.sessionValidity")
     @Mapping(target = "id", source = "user.id")
     AuthUserDTO toDto(AuthUser user, @MappingTarget AuthUserDTO dto, AuthUserDetail detail);
 

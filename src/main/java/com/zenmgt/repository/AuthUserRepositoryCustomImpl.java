@@ -38,6 +38,7 @@ public class AuthUserRepositoryCustomImpl
             .gender(dto.getGender())
             .address(dto.getAddress())
             .profilePictureUrl(dto.getProfilePictureUrl())
+            .sessionValidity(dto.getSessionValidity() != null ? dto.getSessionValidity() : 86400000L) // Default to 24 hours
             .build();
     }
 } 

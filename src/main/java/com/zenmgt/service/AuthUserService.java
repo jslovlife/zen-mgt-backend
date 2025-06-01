@@ -28,4 +28,7 @@ public interface AuthUserService {
     ResponseEntity<?> verifyAndEnableMfa(MfaSetupDTO setupDTO);
     ResponseEntity<?> disableMfa(MfaSetupDTO setupDTO);
     ResponseEntity<?> generateNewRecoveryCodes(MfaSetupDTO setupDTO);
+    
+    // Session validity management
+    boolean updateSessionValidity(Long userId, Long sessionValidityMs);
 } 

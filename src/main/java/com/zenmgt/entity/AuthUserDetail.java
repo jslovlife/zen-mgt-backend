@@ -44,6 +44,10 @@ public class AuthUserDetail extends BaseVersionDetail {
     @Column(name = "profile_picture_url")
     private String profilePictureUrl;
 
+    @Column(name = "session_validity")
+    @Builder.Default
+    private Long sessionValidity = 86400000L; // Default to 24 hours (24 * 60 * 60 * 1000 ms)
+
     @Override
     public Long getParentId() {
         return parentId;

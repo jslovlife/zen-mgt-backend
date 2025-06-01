@@ -30,6 +30,7 @@ CREATE TABLE auth_user_detail (
     gender VARCHAR(10),
     address TEXT,
     profile_picture_url VARCHAR(255),
+    session_validity BIGINT DEFAULT 86400000 COMMENT 'Session validity duration in milliseconds (default: 24 hours)',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_by BIGINT NOT NULL,
@@ -39,6 +40,7 @@ CREATE TABLE auth_user_detail (
 
 -- Create indexes for auth_user_detail
 CREATE INDEX idx_auth_user_detail_user_id ON auth_user_detail(auth_user_id);
+CREATE INDEX idx_auth_user_detail_session_validity ON auth_user_detail(session_validity); 
 
 CREATE TABLE auth_user_credential (
     id BIGINT PRIMARY KEY,
