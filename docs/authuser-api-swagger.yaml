@@ -1,0 +1,481 @@
+openapi: 3.0.3
+info:
+  title: AuthUser Management API
+  description: API for managing users in the Zen Management System
+  version: 1.0.0
+  contact:
+    name: Zen Management Team
+    email: support@zenmgt.com
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /mgt/v1/users:
+    get:
+      summary: Get all users
+      description: Retrieve all users in the system
+      tags:
+        - Users
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuthUserDTO'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create new user
+      description: Create a new user in the system
+      tags:
+        - Users
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '200':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserDTO'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /mgt/v1/users/{id}:
+    get:
+      summary: Get user by ID
+      description: Retrieve a specific user by their ID
+      tags:
+        - Users
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserDTO'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      summary: Update user
+      description: Update an existing user
+      tags:
+        - Users
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserDTO'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    delete:
+      summary: Delete user
+      description: Soft delete a user (sets status to DELETED)
+      tags:
+        - Users
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /mgt/v1/users/code/{userCode}:
+    get:
+      summary: Get user by code
+      description: Retrieve a specific user by their user code
+      tags:
+        - Users
+      parameters:
+        - name: userCode
+          in: path
+          required: true
+          description: User code
+          schema:
+            type: string
+            example: "superadmin"
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserDTO'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /mgt/v1/users/list:
+    get:
+      summary: Get user list (alternative)
+      description: Alternative endpoint to get all users
+      tags:
+        - Users
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuthUserDTO'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /mgt/v1/users/{id}/session-validity:
+    put:
+      summary: Update session validity
+      description: Update session validity duration for a specific user
+      tags:
+        - Users
+        - Session Management
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionValidityRequest'
+      responses:
+        '200':
+          description: Session validity updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionValidityResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      description: User ID
+      schema:
+        type: integer
+        format: int64
+        example: 1
+
+  schemas:
+    AuthUserDTO:
+      type: object
+      properties:
+        # Auth User fields
+        id:
+          type: integer
+          format: int64
+          example: 1
+        userCode:
+          type: string
+          example: "superadmin"
+        isActive:
+          type: integer
+          description: "0-Inactive, 1-Active, 2-Locked, 3-Deleted"
+          example: 1
+        sessionKey:
+          type: string
+          nullable: true
+        activeVersion:
+          type: integer
+          example: 0
+        lastLoginAt:
+          type: string
+          format: date-time
+          example: "2024-06-01T10:30:00Z"
+        
+        # Auth User Detail fields
+        username:
+          type: string
+          example: "superadmin"
+        firstName:
+          type: string
+          example: "Super"
+        lastName:
+          type: string
+          example: "Admin"
+        email:
+          type: string
+          format: email
+          example: "superadmin@zenmgt.com"
+        mobileNumber:
+          type: string
+          nullable: true
+          example: "+1234567890"
+        dateOfBirth:
+          type: string
+          format: date
+          nullable: true
+          example: "1990-01-15"
+        gender:
+          type: string
+          nullable: true
+          example: "Male"
+        address:
+          type: string
+          nullable: true
+          example: "123 Main St, City, Country"
+        profilePictureUrl:
+          type: string
+          format: uri
+          nullable: true
+          example: "https://example.com/profile.jpg"
+        status:
+          type: string
+          example: "ACTIVE"
+        sessionValidity:
+          type: integer
+          format: int64
+          description: "Session validity in milliseconds"
+          example: 3600000
+        
+        # Audit fields
+        createdAt:
+          type: string
+          format: date-time
+          example: "2024-06-01T08:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2024-06-01T08:00:00Z"
+        createdBy:
+          type: integer
+          format: int64
+          example: 1
+        updatedBy:
+          type: integer
+          format: int64
+          example: 1
+
+    CreateUserRequest:
+      type: object
+      required:
+        - username
+        - firstName
+        - lastName
+        - email
+      properties:
+        username:
+          type: string
+          description: "Unique username"
+          example: "newuser"
+        firstName:
+          type: string
+          description: "User's first name"
+          example: "John"
+        lastName:
+          type: string
+          description: "User's last name"
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          description: "Unique email address"
+          example: "john.doe@example.com"
+        mobileNumber:
+          type: string
+          description: "Phone number"
+          example: "+1234567890"
+        dateOfBirth:
+          type: string
+          format: date
+          description: "Date of birth (YYYY-MM-DD)"
+          example: "1990-01-15"
+        gender:
+          type: string
+          description: "Gender"
+          example: "Male"
+        address:
+          type: string
+          description: "Address"
+          example: "123 Main St, City, Country"
+        profilePictureUrl:
+          type: string
+          format: uri
+          description: "Profile picture URL"
+          example: "https://example.com/profile.jpg"
+        sessionValidity:
+          type: integer
+          format: int64
+          description: "Session validity in milliseconds (default: 86400000 = 24 hours)"
+          example: 14400000
+
+    UpdateUserRequest:
+      type: object
+      description: "All fields are optional for update"
+      properties:
+        username:
+          type: string
+          example: "updateduser"
+        firstName:
+          type: string
+          example: "John"
+        lastName:
+          type: string
+          example: "Doe"
+        email:
+          type: string
+          format: email
+          example: "john.doe@example.com"
+        mobileNumber:
+          type: string
+          example: "+1234567890"
+        dateOfBirth:
+          type: string
+          format: date
+          example: "1990-01-15"
+        gender:
+          type: string
+          example: "Male"
+        address:
+          type: string
+          example: "123 Main St, City, Country"
+        profilePictureUrl:
+          type: string
+          format: uri
+          example: "https://example.com/profile.jpg"
+        sessionValidity:
+          type: integer
+          format: int64
+          example: 14400000
+
+    SessionValidityRequest:
+      type: object
+      required:
+        - sessionValidityMs
+      properties:
+        sessionValidityMs:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "Session validity in milliseconds (must be > 0)"
+          example: 3600000
+
+    SessionValidityResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Session validity updated successfully"
+        sessionValidityMs:
+          type: integer
+          format: int64
+          example: 3600000
+        sessionValidityHours:
+          type: number
+          format: double
+          example: 1.0
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Error message"
+        message:
+          type: string
+          example: "Detailed error description"
+        path:
+          type: string
+          example: "/mgt/v1/users/1"
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Invalid session validity value"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Unauthorized"
+            message: "No valid Bearer token found"
+            path: "/mgt/v1/users/1"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "User not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Internal Server Error"
+            message: "An unexpected error occurred"
+
+# Session Validity Preset Values
+# 1 hour: 3600000
+# 4 hours: 14400000
+# 8 hours: 28800000
+# 24 hours: 86400000 (default)
+# 7 days: 604800000 

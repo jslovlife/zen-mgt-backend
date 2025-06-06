@@ -1,32 +1,35 @@
-package com.zenmgt.entity;
+package com.zenmgt.model;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-@Entity
-@Table(name = "auth_user_credential")
+@TableName("auth_user_credential")
 @Getter
 @Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class AuthUserCredential extends BaseVersionDetail {
-    @Column(name = "auth_user_id")
+public class AuthUserCredential extends BaseDetailMapper {
+    @TableField("parent_id")
     private Long parentId;
 
-    @Column(name = "hash_password", nullable = false)
+    @TableField("hash_password")
     private String hashPassword;
 
-    @Column(name = "mfa_secret")
+    @TableField("mfa_secret")
     private String mfaSecret;
 
-    @Column(name = "mfa_enabled", nullable = false)
+    @TableField("mfa_enforced")
+    @Builder.Default
+    private Boolean mfaEnforced = false;
+
+    @TableField("mfa_enabled")
     @Builder.Default
     private Boolean mfaEnabled = false;
 
-    @Column(name = "recovery_codes", length = 1000)
+    @TableField("recovery_codes")
     private String recoveryCodes;
 
     @Override

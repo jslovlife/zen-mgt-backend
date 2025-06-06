@@ -1,12 +1,15 @@
 package com.zenmgt.service;
 
-import com.zenmgt.entity.AuthUser;
-import com.zenmgt.entity.AuthUserDetail;
-import com.zenmgt.repository.AuthUserDetailRepository;
+import com.zenmgt.model.AuthUser;
+import com.zenmgt.model.AuthUserDetail;
+import com.zenmgt.repository.UserGroupMemberRepository;
+import com.zenmgt.util.SecurityHashUtil;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -14,12 +17,17 @@ import org.springframework.stereotype.Service;
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+import com.zenmgt.repository.UserRepository;
+
 @Service
 public class JwtServiceImpl implements JwtService {
+
+    private static final Logger logger = LoggerFactory.getLogger(JwtServiceImpl.class);
 
     @Value("${app.jwt.secret-key}")
     private String secretKey;
@@ -27,8 +35,17 @@ public class JwtServiceImpl implements JwtService {
     @Value("${app.jwt.expiration}")
     private long jwtExpiration;
 
+    @Value("${app.jwt.refresh-token.expiration}")
+    private long refreshExpiration;
+    
     @Autowired
-    private AuthUserDetailRepository authUserDetailRepository;
+    private UserGroupMemberRepository userGroupMemberRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+    
+    @Autowired
+    private SecurityHashUtil securityHashUtil;
 
     @Override
     public String generateToken(AuthUser user) {
@@ -39,7 +56,22 @@ public class JwtServiceImpl implements JwtService {
 
     @Override
     public String generateTokenWithCustomExpiration(AuthUser user, long customExpirationMs) {
-        return generateToken(new HashMap<>(), user, customExpirationMs);
+        Map<String, Object> extraClaims = new HashMap<>();
+        
+        // Add hashed user ID
+        String hashedUserId = securityHashUtil.hashUserId(user.getId());
+        extraClaims.put("huid", hashedUserId);
+        
+        // Get primary user group ID and hash it
+        List<Long> userGroupIds = userGroupMemberRepository.findUserGroupIdsByUserId(user.getId());
+        if (!userGroupIds.isEmpty()) {
+            // Use the first user group as primary (in practice, this could be more sophisticated)
+            Long primaryUserGroupId = userGroupIds.get(0);
+            String hashedUserGroupId = securityHashUtil.hashUserGroupId(primaryUserGroupId);
+            extraClaims.put("hgid", hashedUserGroupId);
+        }
+        
+        return generateToken(extraClaims, user, customExpirationMs);
     }
 
     @Override
@@ -53,6 +85,16 @@ public class JwtServiceImpl implements JwtService {
     }
 
     @Override
+    public String extractHashedUserId(String token) {
+        return extractClaim(token, claims -> claims.get("huid", String.class));
+    }
+
+    @Override
+    public String extractHashedUserGroupId(String token) {
+        return extractClaim(token, claims -> claims.get("hgid", String.class));
+    }
+
+    @Override
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
@@ -61,7 +103,18 @@ public class JwtServiceImpl implements JwtService {
     @Override
     public boolean isTokenValid(String token, AuthUser user) {
         final String username = extractUsername(token);
-        return username.equals(user.getUserCode()) && !isTokenExpired(token);
+        final String hashedUserId = extractHashedUserId(token);
+        
+        // Verify username matches
+        boolean usernameValid = username.equals(user.getUserCode());
+        
+        // Verify hashed user ID matches
+        boolean userIdValid = securityHashUtil.verifyUserIdHash(user.getId(), hashedUserId);
+        
+        // Verify token is not expired
+        boolean notExpired = !isTokenExpired(token);
+        
+        return usernameValid && userIdValid && notExpired;
     }
 
     private Claims extractAllClaims(String token) {
@@ -95,10 +148,12 @@ public class JwtServiceImpl implements JwtService {
      * Get user-specific session validity or fall back to default
      */
     private long getUserSessionValidity(AuthUser user) {
-        Optional<AuthUserDetail> userDetailOpt = authUserDetailRepository.findByParentId(user.getId());
-        if (userDetailOpt.isPresent() && userDetailOpt.get().getSessionValidity() != null) {
-            return userDetailOpt.get().getSessionValidity();
+        Long sessionValidity = userRepository.getSessionValidity(user.getId());
+        
+        if (sessionValidity != null) {
+            return sessionValidity;
         }
+
         // Fall back to global JWT expiration if user-specific value is not set
         return jwtExpiration;
     }

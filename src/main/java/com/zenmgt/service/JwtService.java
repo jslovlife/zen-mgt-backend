@@ -1,8 +1,10 @@
 package com.zenmgt.service;
 
-import com.zenmgt.entity.AuthUser;
 import java.util.Date;
 import java.util.function.Function;
+
+import com.zenmgt.model.AuthUser;
+
 import io.jsonwebtoken.Claims;
 
 /**
@@ -41,6 +43,22 @@ public interface JwtService {
      * @return The expiration date
      */
     Date extractExpiration(String token);
+
+    /**
+     * Extracts the hashed user ID from a JWT token.
+     *
+     * @param token The JWT token
+     * @return The hashed user ID
+     */
+    String extractHashedUserId(String token);
+
+    /**
+     * Extracts the hashed user group ID from a JWT token.
+     *
+     * @param token The JWT token
+     * @return The hashed user group ID
+     */
+    String extractHashedUserGroupId(String token);
 
     /**
      * Extracts a claim from a JWT token using a claims resolver function.

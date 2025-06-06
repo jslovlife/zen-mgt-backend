@@ -26,19 +26,11 @@ spring:
       max-lifetime: 1800000
       leak-detection-threshold: 60000
       pool-name: ZenMgt-HikariCP
+  # Explicitly disable JPA/Hibernate DDL auto-creation
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.MySQLDialect
-        jdbc:
-          batch_size: 20
-        order_inserts: true
-        order_updates: true
-        batch_versioned_data: true
+    show-sql: false
   data:
     redis:
       host: localhost
@@ -80,13 +72,38 @@ spring:
         size: 5
       thread-name-prefix: ZenMgt-Scheduler-
 
+# MyBatis Plus Configuration
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    auto-mapping-behavior: partial
+    auto-mapping-unknown-column-behavior: none
+    default-executor-type: reuse
+    default-statement-timeout: 30
+    use-generated-keys: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: input
+      table-underline: true
+      capital-mode: false
+      logic-delete-field: is_deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      table-prefix: ""
+    banner: false
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.zenmgt.entity
+  # Disable config location checking to prevent DDL auto-creation
+  check-config-location: false
+
 logging:
   level:
     root: INFO
     com.zenmgt: DEBUG
     org.springframework.security: DEBUG
     org.springframework.web: INFO
-    org.hibernate: INFO
+    com.baomidou.mybatisplus: DEBUG
 
 # Custom Application Properties
 app:

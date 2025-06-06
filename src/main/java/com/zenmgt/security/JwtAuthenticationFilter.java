@@ -16,13 +16,16 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.http.MediaType;
 
 import com.zenmgt.service.JwtService;
-import com.zenmgt.repository.AuthUserRepository;
+import com.zenmgt.repository.UserRepository;
+import com.zenmgt.service.TokenBlacklistService;
 
 import lombok.RequiredArgsConstructor;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Collections;
+import org.springframework.beans.factory.annotation.Autowired;
+
 
 @Component
 @RequiredArgsConstructor
@@ -30,7 +33,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
     private final JwtService jwtService;
-    private final AuthUserRepository userRepository;
+
+    @Autowired
+    private final UserRepository userRepository;
+
+    @Autowired
+    private final TokenBlacklistService tokenBlacklistService;
 
     private final List<String> PUBLIC_PATHS = Arrays.asList(
         "/mgt/v1/auth/login",
@@ -38,7 +46,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         "/mgt/v1/auth/oauth2/login/success",
         "/mgt/v1/auth/oauth2/login/failure",
         "/mgt/v1/auth/config",
-        "/error"
+        "/error",
+        // Test endpoints for debugging
+        "/test/**",
+        "/mgt/v1/enums/test",
+        "/mgt/v1/enums/test-all",
+        "/mgt/v1/users/test-search",
+        // Swagger/OpenAPI paths
+        "/v3/api-docs/**",
+        "/swagger-ui/**",
+        "/swagger-ui.html",
+        "/webjars/**"
     );
 
     private final List<String> MFA_PUBLIC_PATHS = Arrays.asList(
@@ -131,8 +149,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             }
 
             final String jwt = authHeader.substring(7);
-            final String username = jwtService.extractUsername(jwt);
+            String username = jwtService.extractUsername(jwt);
             logger.debug("Extracted username from JWT: {}", username);
+
+            // Check if token is blacklisted (logged out)
+            if (tokenBlacklistService.isTokenBlacklisted(jwt)) {
+                logger.debug("Token is blacklisted - user has logged out");
+                sendErrorResponse(response, "Token has been invalidated", request.getRequestURI());
+                return;
+            }
+
+            final String hashedUserId = jwtService.extractHashedUserId(jwt);
+            final String hashedUserGroupId = jwtService.extractHashedUserGroupId(jwt);
+            
+            logger.debug("Extracted hashed user ID: {}", hashedUserId != null ? "present" : "absent");
+            logger.debug("Extracted hashed user group ID: {}", hashedUserGroupId != null ? "present" : "absent");
 
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 var userOptional = userRepository.findByUsername(username);

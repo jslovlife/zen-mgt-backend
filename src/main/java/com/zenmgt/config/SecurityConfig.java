@@ -23,6 +23,7 @@ import org.springframework.boot.web.servlet.error.ErrorAttributes;
 import org.springframework.web.context.request.WebRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpMethod;
 
 import com.zenmgt.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +59,9 @@ public class SecurityConfig {
         "/mgt/v1/auth/oauth2/login/success",
         "/mgt/v1/auth/oauth2/login/failure",
         "/mgt/v1/auth/config",
+        "/mgt/v1/enums/test",
+        "/mgt/v1/enums/test-all",
+        "/mgt/v1/users/test-search",
         "/error"
     };
 
