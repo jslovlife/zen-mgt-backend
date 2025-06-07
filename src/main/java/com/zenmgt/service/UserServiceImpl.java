@@ -32,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -54,6 +55,7 @@ public class UserServiceImpl implements UserService {
     private final AuthUserDetailRepository authUserDetailRepository;
     private final AuthUserCredentialRepository authUserCredentialRepository;
     private final SecurityHashUtil securityHashUtil;
+    private final PasswordEncoder passwordEncoder;
     
     // TOTP dependencies
     // TODO: Temporarily commented out to fix Spring startup - need proper TOTP configuration
@@ -679,9 +681,11 @@ public class UserServiceImpl implements UserService {
     
     @Override
     public UserSearchCriteria buildSearchCriteria(String search, String username, String email, String userCode,
-            Integer[] activeStates, String sortBy, String sortDirection) {
+            Integer[] activeStates, String sortBy, String sortDirection, int page, int pageSize) {
         
         UserSearchCriteria.UserSearchCriteriaBuilder builder = UserSearchCriteria.builder()
+            .page(page)
+            .pageSize(pageSize)
             .globalSearch(search)
             .username(username)
             .email(email)
@@ -757,6 +761,8 @@ public class UserServiceImpl implements UserService {
                 throw new ValidationException(ErrorCodes.ENCRYPTED_ID_INVALID, "Invalid encrypted IDs");
             }
             
+            logger.debug("User ID: {}", userId);
+
             // Check if user can toggle status
             if (!userRepository.canUserToggleStatus(userId)) {
                 throw new BusinessException(ErrorCodes.INVALID_USER_STATUS, 
@@ -974,5 +980,286 @@ public class UserServiceImpl implements UserService {
             .createdAt(userDTO.getCreatedAt())
             .updatedAt(userDTO.getUpdatedAt())
             .build();
+    }
+    
+    // ====== User Security Management Operations ======
+    
+    @Override
+    @Transactional
+    public Map<String, Object> resetUserPassword(String encryptedUserId, String hashedCurrentUserId) {
+        logger.debug("Resetting password for encrypted user ID: {}", encryptedUserId);
+        
+        try {
+            Long userId = securityHashUtil.decodeHashedUserId(encryptedUserId);
+            Long currentUserId = securityHashUtil.decodeHashedUserId(hashedCurrentUserId);
+            
+            if (userId == null || currentUserId == null) {
+                throw new ValidationException(ErrorCodes.ENCRYPTED_ID_INVALID, "Invalid encrypted IDs");
+            }
+            
+            // Check if user exists
+            AuthUser user = userRepository.selectById(userId);
+            if (user == null) {
+                throw new BusinessException(ErrorCodes.ENTITY_NOT_FOUND, "User not found");
+            }
+            
+            // Generate temporary password (8 characters with letters and numbers)
+            String tempPassword = generateTemporaryPassword();
+            String hashedPassword = passwordEncoder.encode(tempPassword);
+            
+            // Get or create credential record
+            Optional<AuthUserCredential> credentialOpt = authUserCredentialRepository.findByParentId(userId);
+            AuthUserCredential credential;
+            
+            if (credentialOpt.isPresent()) {
+                credential = credentialOpt.get();
+                credential.setHashPassword(hashedPassword);
+                credential.setUpdatedBy(currentUserId);
+                credential.setUpdatedAt(LocalDateTime.now());
+                authUserCredentialRepository.updateById(credential);
+            } else {
+                credential = AuthUserCredential.builder()
+                    .parentId(userId)
+                    .hashPassword(hashedPassword)
+                    .mfaEnabled(false)
+                    .mfaEnforced(false)
+                    .createdBy(currentUserId)
+                    .updatedBy(currentUserId)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+                authUserCredentialRepository.insert(credential);
+            }
+            
+            logger.info("Password reset for user ID: {} by user: {}", userId, currentUserId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("encryptedUserId", encryptedUserId);
+            result.put("temporaryPassword", tempPassword);
+            result.put("message", "Password has been reset. User must change password on next login.");
+            result.put("resetAt", LocalDateTime.now());
+            
+            return result;
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error resetting password: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to reset password");
+        }
+    }
+    
+    @Override
+    @Transactional
+    public Map<String, Object> resetUserMFA(String encryptedUserId, String hashedCurrentUserId) {
+        logger.debug("Resetting MFA for encrypted user ID: {}", encryptedUserId);
+        
+        try {
+            Long userId = securityHashUtil.decodeHashedUserId(encryptedUserId);
+            Long currentUserId = securityHashUtil.decodeHashedUserId(hashedCurrentUserId);
+            
+            if (userId == null || currentUserId == null) {
+                throw new ValidationException(ErrorCodes.ENCRYPTED_ID_INVALID, "Invalid encrypted IDs");
+            }
+            
+            // Check if user exists
+            AuthUser user = userRepository.selectById(userId);
+            if (user == null) {
+                throw new BusinessException(ErrorCodes.ENTITY_NOT_FOUND, "User not found");
+            }
+            
+            // Get credential record
+            Optional<AuthUserCredential> credentialOpt = authUserCredentialRepository.findByParentId(userId);
+            if (credentialOpt.isEmpty()) {
+                throw new BusinessException(ErrorCodes.ENTITY_NOT_FOUND, "User credentials not found");
+            }
+            
+            AuthUserCredential credential = credentialOpt.get();
+            boolean wasEnabled = credential.getMfaEnabled() != null && credential.getMfaEnabled();
+            
+            // Reset MFA settings
+            credential.setMfaEnabled(false);
+            credential.setMfaEnforced(false);
+            credential.setMfaSecret(null);
+            credential.setRecoveryCodes(null);
+            credential.setUpdatedBy(currentUserId);
+            credential.setUpdatedAt(LocalDateTime.now());
+            
+            authUserCredentialRepository.updateById(credential);
+            
+            logger.info("MFA reset for user ID: {} by user: {}", userId, currentUserId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("encryptedUserId", encryptedUserId);
+            result.put("wasEnabled", wasEnabled);
+            result.put("message", "MFA has been reset. User can setup MFA again if needed.");
+            result.put("resetAt", LocalDateTime.now());
+            
+            return result;
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error resetting MFA: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to reset MFA");
+        }
+    }
+    
+    @Override
+    @Transactional
+    public Map<String, Object> toggleUserMFA(String encryptedUserId, boolean enabled, String hashedCurrentUserId) {
+        logger.debug("Toggling MFA for encrypted user ID: {} to: {}", encryptedUserId, enabled);
+        
+        try {
+            Long userId = securityHashUtil.decodeHashedUserId(encryptedUserId);
+            Long currentUserId = securityHashUtil.decodeHashedUserId(hashedCurrentUserId);
+            
+            if (userId == null || currentUserId == null) {
+                throw new ValidationException(ErrorCodes.ENCRYPTED_ID_INVALID, "Invalid encrypted IDs");
+            }
+            
+            // Check if user exists
+            AuthUser user = userRepository.selectById(userId);
+            if (user == null) {
+                throw new BusinessException(ErrorCodes.ENTITY_NOT_FOUND, "User not found");
+            }
+            
+            // Get credential record
+            Optional<AuthUserCredential> credentialOpt = authUserCredentialRepository.findByParentId(userId);
+            if (credentialOpt.isEmpty()) {
+                throw new BusinessException(ErrorCodes.ENTITY_NOT_FOUND, "User credentials not found");
+            }
+            
+            AuthUserCredential credential = credentialOpt.get();
+            boolean previousState = credential.getMfaEnabled() != null && credential.getMfaEnabled();
+            
+            if (enabled) {
+                // Enabling MFA - check if secret exists
+                if (credential.getMfaSecret() == null || credential.getMfaSecret().trim().isEmpty()) {
+                    throw new BusinessException(ErrorCodes.MFA_SETUP_REQUIRED, 
+                        "MFA secret not found. User must complete MFA setup first.");
+                }
+                credential.setMfaEnabled(true);
+            } else {
+                // Disabling MFA
+                credential.setMfaEnabled(false);
+                credential.setMfaEnforced(false);
+            }
+            
+            credential.setUpdatedBy(currentUserId);
+            credential.setUpdatedAt(LocalDateTime.now());
+            
+            authUserCredentialRepository.updateById(credential);
+            
+            logger.info("MFA toggled for user ID: {} from {} to {} by user: {}", 
+                userId, previousState, enabled, currentUserId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", true);
+            result.put("encryptedUserId", encryptedUserId);
+            result.put("enabled", enabled);
+            result.put("previousState", previousState);
+            result.put("message", enabled ? "MFA has been enabled" : "MFA has been disabled");
+            result.put("toggledAt", LocalDateTime.now());
+            
+            return result;
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error toggling MFA: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to toggle MFA");
+        }
+    }
+    
+    @Override
+    public Map<String, Object> getUserSecurityStatus(String encryptedUserId) {
+        logger.debug("Getting security status for encrypted user ID: {}", encryptedUserId);
+        
+        try {
+            Long userId = securityHashUtil.decodeHashedUserId(encryptedUserId);
+            
+            if (userId == null) {
+                throw new ValidationException(ErrorCodes.ENCRYPTED_ID_INVALID, "Invalid encrypted user ID");
+            }
+            
+            // Check if user exists
+            AuthUser user = userRepository.selectById(userId);
+            if (user == null) {
+                throw new BusinessException(ErrorCodes.ENTITY_NOT_FOUND, "User not found");
+            }
+            
+            // Get credential record
+            Optional<AuthUserCredential> credentialOpt = authUserCredentialRepository.findByParentId(userId);
+            
+            Map<String, Object> result = new HashMap<>();
+            result.put("encryptedUserId", encryptedUserId);
+            result.put("username", user.getUserCode());
+            
+            if (credentialOpt.isPresent()) {
+                AuthUserCredential credential = credentialOpt.get();
+                
+                // Password info
+                Map<String, Object> passwordInfo = new HashMap<>();
+                passwordInfo.put("hasPassword", credential.getHashPassword() != null && !credential.getHashPassword().isEmpty());
+                passwordInfo.put("lastUpdated", credential.getUpdatedAt());
+                result.put("password", passwordInfo);
+                
+                // MFA info
+                Map<String, Object> mfaInfo = new HashMap<>();
+                mfaInfo.put("enabled", credential.getMfaEnabled() != null && credential.getMfaEnabled());
+                mfaInfo.put("enforced", credential.getMfaEnforced() != null && credential.getMfaEnforced());
+                mfaInfo.put("hasSecret", credential.getMfaSecret() != null && !credential.getMfaSecret().isEmpty());
+                mfaInfo.put("hasRecoveryCodes", credential.getRecoveryCodes() != null && !credential.getRecoveryCodes().isEmpty());
+                mfaInfo.put("setupRequired", (credential.getMfaSecret() == null || credential.getMfaSecret().isEmpty()) 
+                    && (credential.getMfaEnabled() != null && credential.getMfaEnabled()));
+                result.put("mfa", mfaInfo);
+                
+            } else {
+                // No credentials found
+                Map<String, Object> passwordInfo = new HashMap<>();
+                passwordInfo.put("hasPassword", false);
+                passwordInfo.put("lastUpdated", null);
+                result.put("password", passwordInfo);
+                
+                Map<String, Object> mfaInfo = new HashMap<>();
+                mfaInfo.put("enabled", false);
+                mfaInfo.put("enforced", false);
+                mfaInfo.put("hasSecret", false);
+                mfaInfo.put("hasRecoveryCodes", false);
+                mfaInfo.put("setupRequired", false);
+                result.put("mfa", mfaInfo);
+            }
+            
+            // User status
+            result.put("recordStatus", user.getRecordStatus());
+            result.put("lastLoginAt", user.getLastLoginAt());
+            result.put("createdAt", user.getCreatedAt());
+            
+            return result;
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Error getting security status: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to get security status");
+        }
+    }
+    
+    /**
+     * Generate a temporary password
+     */
+    private String generateTemporaryPassword() {
+        String chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        StringBuilder password = new StringBuilder();
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        
+        for (int i = 0; i < 8; i++) {
+            password.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        
+        return password.toString();
     }
 } 

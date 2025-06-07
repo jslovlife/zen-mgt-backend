@@ -20,7 +20,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,7 +71,7 @@ public class UserController {
         try {
             Page<UserHashedDTO> pageRequest = new Page<>(page, size);
             UserSearchCriteria criteria = userService.buildSearchCriteria(
-                search, username, email, userCode, activeStates, sortBy, sortDirection);
+                search, username, email, userCode, activeStates, sortBy, sortDirection, page, size);
 
             UserPagedResponseDTO<UserHashedDTO> result = userService.searchUsersPaginated(
                 pageRequest, criteria, includeGroupCount);
@@ -251,7 +253,137 @@ public class UserController {
         throw new RuntimeException("This is a test system error that should be masked");
     }
 
+    // ====== Test Endpoints for Security Management ======
+
+    /**
+     * Test endpoint for password reset (no auth required)
+     */
+    @PatchMapping("/{encryptedUserId}/test-reset-password")
+    public ApiResponse<Map<String, Object>> testResetUserPassword(
+            @PathVariable String encryptedUserId) {
+        
+        try {
+            // Use system admin as current user for testing
+            String hashedSystemUserId = "sys-admin-hash-test";
+            Map<String, Object> result = userService.resetUserPassword(encryptedUserId, hashedSystemUserId);
+            return ApiResponse.success(result, "User password reset successfully (TEST)");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error testing password reset for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to test password reset");
+        }
+    }
+
+    /**
+     * Test endpoint for MFA reset (no auth required)
+     */
+    @PatchMapping("/{encryptedUserId}/test-reset-mfa")
+    public ApiResponse<Map<String, Object>> testResetUserMFA(
+            @PathVariable String encryptedUserId) {
+        
+        try {
+            // Use system admin as current user for testing
+            String hashedSystemUserId = "sys-admin-hash-test";
+            Map<String, Object> result = userService.resetUserMFA(encryptedUserId, hashedSystemUserId);
+            return ApiResponse.success(result, "User MFA reset successfully (TEST)");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error testing MFA reset for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to test MFA reset");
+        }
+    }
+
+    /**
+     * Test endpoint for MFA toggle (no auth required)
+     */
+    @PatchMapping("/{encryptedUserId}/test-toggle-mfa-admin")
+    public ApiResponse<Map<String, Object>> testToggleUserMFA(
+            @PathVariable String encryptedUserId,
+            @RequestParam boolean enabled) {
+        
+        try {
+            // Use system admin as current user for testing
+            String hashedSystemUserId = "sys-admin-hash-test";
+            Map<String, Object> result = userService.toggleUserMFA(encryptedUserId, enabled, hashedSystemUserId);
+            return ApiResponse.success(result, enabled ? "User MFA enabled successfully (TEST)" : "User MFA disabled successfully (TEST)");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error testing MFA toggle for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to test MFA toggle");
+        }
+    }
+
+    /**
+     * Test endpoint for security status (no auth required)
+     */
+    @GetMapping("/{encryptedUserId}/test-security-status")
+    public ApiResponse<Map<String, Object>> testGetUserSecurityStatus(
+            @PathVariable String encryptedUserId) {
+        
+        try {
+            Map<String, Object> result = userService.getUserSecurityStatus(encryptedUserId);
+            return ApiResponse.success(result, "User security status retrieved successfully (TEST)");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error testing security status for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to test security status");
+        }
+    }
+
     // ====== Record Status Management Endpoints ======
+
+    /**
+     * Test version of toggle-status to debug headers
+     */
+    @PatchMapping("/{encryptedUserId}/test-toggle-status")
+    public ApiResponse<Map<String, Object>> testToggleUserStatus(
+            @PathVariable String encryptedUserId,
+            @RequestHeader(value = "X-Current-User", required = false) String hashedCurrentUserId,
+            HttpServletRequest request) {
+        
+        try {
+            Map<String, Object> result = new HashMap<>();
+            result.put("encryptedUserId", encryptedUserId);
+            result.put("hashedCurrentUserId", hashedCurrentUserId);
+            result.put("hashedCurrentUserIdPresent", hashedCurrentUserId != null);
+            
+            // Debug all headers
+            Map<String, String> headers = new HashMap<>();
+            Enumeration<String> headerNames = request.getHeaderNames();
+            while (headerNames.hasMoreElements()) {
+                String headerName = headerNames.nextElement();
+                headers.put(headerName, request.getHeader(headerName));
+            }
+            result.put("allHeaders", headers);
+            
+            // Try to decode both IDs
+            Map<String, Object> decodingResults = new HashMap<>();
+            try {
+                // We need SecurityHashUtil to decode, but let's just test if they're not null
+                decodingResults.put("encryptedUserIdValid", encryptedUserId != null && !encryptedUserId.isEmpty());
+                decodingResults.put("hashedCurrentUserIdValid", hashedCurrentUserId != null && !hashedCurrentUserId.isEmpty());
+            } catch (Exception e) {
+                decodingResults.put("decodingError", e.getMessage());
+            }
+            result.put("decodingResults", decodingResults);
+            
+            return ApiResponse.success(result, "Toggle status debug completed");
+            
+        } catch (Exception e) {
+            log.error("Error in toggle status debug: {}", e.getMessage(), e);
+            Map<String, Object> errorInfo = new HashMap<>();
+            errorInfo.put("error", e.getMessage());
+            return ApiResponse.success(errorInfo, "Toggle status debug failed: " + e.getMessage());
+        }
+    }
 
     /**
      * Toggle user status (Active/Inactive) - only allowed for successfully created users
@@ -588,6 +720,88 @@ public class UserController {
             Map<String, Object> errorInfo = new HashMap<>();
             errorInfo.put("error", e.getMessage());
             return ApiResponse.success(errorInfo, "Test search failed: " + e.getMessage());
+        }
+    }
+
+    // ====== User Security Management Endpoints ======
+
+    /**
+     * Reset user password - generates a temporary password
+     */
+    @PatchMapping("/{encryptedUserId}/reset-password")
+    public ApiResponse<Map<String, Object>> resetUserPassword(
+            @PathVariable String encryptedUserId,
+            @RequestHeader("X-Current-User") String hashedCurrentUserId) {
+        
+        try {
+            Map<String, Object> result = userService.resetUserPassword(encryptedUserId, hashedCurrentUserId);
+            return ApiResponse.success(result, "User password reset successfully");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error resetting password for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to reset user password");
+        }
+    }
+
+    /**
+     * Reset user MFA - disables MFA and clears MFA secret
+     */
+    @PatchMapping("/{encryptedUserId}/reset-mfa")
+    public ApiResponse<Map<String, Object>> resetUserMFA(
+            @PathVariable String encryptedUserId,
+            @RequestHeader("X-Current-User") String hashedCurrentUserId) {
+        
+        try {
+            Map<String, Object> result = userService.resetUserMFA(encryptedUserId, hashedCurrentUserId);
+            return ApiResponse.success(result, "User MFA reset successfully");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error resetting MFA for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to reset user MFA");
+        }
+    }
+
+    /**
+     * Enable/Disable user MFA
+     */
+    @PatchMapping("/{encryptedUserId}/toggle-mfa")
+    public ApiResponse<Map<String, Object>> toggleUserMFA(
+            @PathVariable String encryptedUserId,
+            @RequestParam boolean enabled,
+            @RequestHeader("X-Current-User") String hashedCurrentUserId) {
+        
+        try {
+            Map<String, Object> result = userService.toggleUserMFA(encryptedUserId, enabled, hashedCurrentUserId);
+            return ApiResponse.success(result, enabled ? "User MFA enabled successfully" : "User MFA disabled successfully");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error toggling MFA for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to toggle user MFA");
+        }
+    }
+
+    /**
+     * Get user security status (password and MFA info)
+     */
+    @GetMapping("/{encryptedUserId}/security-status")
+    public ApiResponse<Map<String, Object>> getUserSecurityStatus(
+            @PathVariable String encryptedUserId) {
+        
+        try {
+            Map<String, Object> result = userService.getUserSecurityStatus(encryptedUserId);
+            return ApiResponse.success(result, "User security status retrieved successfully");
+            
+        } catch (BusinessException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error getting security status for user {}: {}", encryptedUserId, e.getMessage(), e);
+            throw new BusinessException(ErrorCodes.INTERNAL_ERROR, "Failed to get user security status");
         }
     }
 

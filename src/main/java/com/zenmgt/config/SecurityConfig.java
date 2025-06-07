@@ -62,6 +62,11 @@ public class SecurityConfig {
         "/mgt/v1/enums/test",
         "/mgt/v1/enums/test-all",
         "/mgt/v1/users/test-search",
+        "/mgt/v1/users/*/test-toggle-status",
+        "/mgt/v1/users/*/test-reset-password",
+        "/mgt/v1/users/*/test-reset-mfa",
+        "/mgt/v1/users/*/test-toggle-mfa-admin",
+        "/mgt/v1/users/*/test-security-status",
         "/error"
     };
 
@@ -165,8 +170,8 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("*"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "X-Current-User"));
         configuration.setExposedHeaders(List.of("Authorization"));
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

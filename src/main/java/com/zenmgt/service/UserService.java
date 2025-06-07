@@ -250,18 +250,20 @@ public interface UserService {
     void validateUserData(UserDTO userDTO, boolean isUpdate);
     
     /**
-     * Build search criteria object
+     * Build search criteria for user queries
      * @param search Global search term
      * @param username Username filter
-     * @param email Email filter
+     * @param email Email filter  
      * @param userCode User code filter
      * @param activeStates Active states filter
      * @param sortBy Sort field
      * @param sortDirection Sort direction
+     * @param page Page number
+     * @param pageSize Page size
      * @return UserSearchCriteria object
      */
     UserSearchCriteria buildSearchCriteria(String search, String username, String email, String userCode,
-            Integer[] activeStates, String sortBy, String sortDirection);
+            Integer[] activeStates, String sortBy, String sortDirection, int page, int pageSize);
     
     // ====== Record Status Management ======
     
@@ -308,4 +310,38 @@ public interface UserService {
      * @return Paginated response
      */
     PagedResponseDTO<UserDTO> searchUsers(UserSearchCriteria criteria);
+    
+    // ====== User Security Management Operations ======
+    
+    /**
+     * Reset user password - generates a temporary password
+     * @param encryptedUserId Encrypted user ID
+     * @param hashedCurrentUserId Encrypted current user ID
+     * @return Password reset result with temporary password
+     */
+    Map<String, Object> resetUserPassword(String encryptedUserId, String hashedCurrentUserId);
+    
+    /**
+     * Reset user MFA - disables MFA and clears MFA secret
+     * @param encryptedUserId Encrypted user ID
+     * @param hashedCurrentUserId Encrypted current user ID
+     * @return MFA reset result
+     */
+    Map<String, Object> resetUserMFA(String encryptedUserId, String hashedCurrentUserId);
+    
+    /**
+     * Enable/Disable user MFA
+     * @param encryptedUserId Encrypted user ID
+     * @param enabled Whether to enable or disable MFA
+     * @param hashedCurrentUserId Encrypted current user ID
+     * @return MFA toggle result
+     */
+    Map<String, Object> toggleUserMFA(String encryptedUserId, boolean enabled, String hashedCurrentUserId);
+    
+    /**
+     * Get user security status (password and MFA info)
+     * @param encryptedUserId Encrypted user ID
+     * @return Security status information
+     */
+    Map<String, Object> getUserSecurityStatus(String encryptedUserId);
 } 

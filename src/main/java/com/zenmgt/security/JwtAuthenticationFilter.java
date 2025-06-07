@@ -46,17 +46,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         "/mgt/v1/auth/oauth2/login/success",
         "/mgt/v1/auth/oauth2/login/failure",
         "/mgt/v1/auth/config",
-        "/error",
-        // Test endpoints for debugging
-        "/test/**",
         "/mgt/v1/enums/test",
         "/mgt/v1/enums/test-all",
         "/mgt/v1/users/test-search",
-        // Swagger/OpenAPI paths
-        "/v3/api-docs/**",
-        "/swagger-ui/**",
-        "/swagger-ui.html",
-        "/webjars/**"
+        "/mgt/v1/users/*/test-toggle-status",
+        "/mgt/v1/users/*/test-reset-password",
+        "/mgt/v1/users/*/test-reset-mfa",
+        "/mgt/v1/users/*/test-toggle-mfa-admin",
+        "/mgt/v1/users/*/test-security-status",
+        "/error",
+        "/health"
     );
 
     private final List<String> MFA_PUBLIC_PATHS = Arrays.asList(

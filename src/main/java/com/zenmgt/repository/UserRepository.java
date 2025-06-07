@@ -232,7 +232,7 @@ public interface UserRepository extends BaseMapper<AuthUser> {
         JOIN sys_approval_request sar ON u.id = sar.reference_id
         WHERE u.id = #{userId} 
         AND sar.request_type = 1 
-        AND sar.request_status = 6
+        AND sar.request_status = 4
         AND sar.reference_type = 100
         """)
     boolean canUserToggleStatus(@Param("userId") Long userId);
